@@ -43,14 +43,18 @@ jobs:
       matrix:
         ruby: ["3.3", "3.4", "4.0","head"]
         rails: ["8.0", "current", "main"]
+        # spec/tapioca/cli/gem_spec.rb is about half of the suite's runtime, so it
+        # runs in its own shard and every other spec file runs in the other.
+        shard: ["gem", "rest"]
         include:
           - rails: "main"
             experimental: true
           - ruby: "head"
             experimental: true
-    name: Ruby ${{ matrix.ruby }} - Rails ${{ matrix.rails }}
+    name: Ruby ${{ matrix.ruby }} - Rails ${{ matrix.rails }} - ${{ matrix.shard }}
     env:
       RAILS_VERSION: ${{ matrix.rails }}
+      TEST_SHARD: ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install protobuf
@@ -75,7 +79,12 @@ jobs:
           fi
           bundle install --jobs 4
       - name: Run tests
-        run: bin/test
+        run: |
+          if [ "$TEST_SHARD" = "gem" ]; then
+            bin/test spec/tapioca/cli/gem_spec.rb
+          else
+            bin/test $(ruby -e 'puts Dir["spec/**/*_spec.rb"].sort - ["spec/tapioca/cli/gem_spec.rb"]')
+          fi
         continue-on-error: ${{ !!matrix.experimental }}
 
   buildall:
