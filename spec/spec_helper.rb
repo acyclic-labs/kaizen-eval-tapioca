@@ -30,3 +30,24 @@ module Minitest
     extend Rails::LineFiltering
   end
 end
+
+# Split the suite across CI jobs with TEST_SHARD_INDEX (1-based) and TEST_SHARD_TOTAL.
+# Each class's test methods are dealt round-robin, in sorted order, so every test runs in exactly one shard.
+if ENV["TEST_SHARD_TOTAL"]
+  require "zlib"
+
+  # @requires_ancestor: singleton(Minitest::Test)
+  module TestSharding
+    #: -> Array[String]
+    def runnable_methods
+      total = Integer(ENV.fetch("TEST_SHARD_TOTAL"))
+      index = Integer(ENV.fetch("TEST_SHARD_INDEX")) - 1
+      offset = Zlib.crc32(name.to_s)
+      methods = super
+      selected = methods.sort.select.with_index { |_, i| (i + offset) % total == index }
+      methods & selected
+    end
+  end
+
+  Minitest::Test.singleton_class.prepend(TestSharding)
+end
